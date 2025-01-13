@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 
 from conan.api.conan_api import ConanAPI
-from conan.api.output import cli_out_write
+from conan.api.output import cli_out_write, ConanOutput
 from conan.cli.command import conan_command, conan_subcommand
 from conan.errors import ConanException
 from conans.model.recipe_ref import RecipeReference
@@ -142,6 +142,14 @@ class _BuildInfo:
 
         def _get_local_artifacts():
             local_artifacts = []
+            missing_artifacts = []
+            artifacts_folder = node.get("package_folder") if artifact_type == "package" else node.get("recipe_folder")
+            if artifacts_folder is None and artifact_type == "package" and node.get("binary") == "Skip":
+                ConanOutput().warning(f"Package marked as 'Skip' for {node.get('ref')}. "
+                                      "Using -c a:tools.graph:skip_binaries=False might force its download for the "
+                                      "conan create/install command so it can be included in the Build Info.")
+                return (local_artifacts, missing_artifacts)
+
             artifacts_folder = Path(node.get("package_folder")) if artifact_type == "package" else Path(node.get("recipe_folder"))
             dl_folder = artifacts_folder.parents[0] / "d"
             dl_folder_files = [file for file in dl_folder.glob("*") if file.name in artifacts_names]
@@ -168,7 +176,7 @@ class _BuildInfo:
                         artifact_info.update({"id": f"{ref}{pkg} :: {file_name}"})
 
                     local_artifacts.append(artifact_info)
-            
+
             missing_files = set(artifacts_names) - processed_files
             return (local_artifacts, missing_files)
 
@@ -219,7 +227,8 @@ class _BuildInfo:
             if sources_artifact:
                 artifacts.append(sources_artifact)
 
-        if not artifacts:
+        folder = node.get("package_folder") if artifact_type == "package" else node.get("recipe_folder")
+        if not artifacts and folder:
             raise ConanException(f"There are missing artifacts for the {node.get('ref')} {artifact_type}. "
                                   "Check that you have all the packages installed in the Conan cache when creating the Build Info.")
 
